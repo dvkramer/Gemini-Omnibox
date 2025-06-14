@@ -1,42 +1,51 @@
 // background.js
-console.log("Background script loaded. (Current Tab Nav Version)");
+console.log("Background script loaded. (Current Tab Nav Version + Re-activate Attempt)");
 
 let pendingQuery = null;
-let targetTabId = null; // To store the ID of the tab we are updating
+let targetTabId = null;
 
 chrome.omnibox.onInputEntered.addListener((text) => {
   console.log(`Omnibox input entered: ${text}`);
   pendingQuery = text;
   const geminiUrl = `https://gemini.google.com/`;
 
-  // Get the current active tab to update it
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (tabs.length > 0) {
       const currentTab = tabs[0];
       targetTabId = currentTab.id;
       console.log(`Updating current tab ${targetTabId} to Gemini. Pending query: ${pendingQuery}`);
+
       chrome.tabs.update(targetTabId, { url: geminiUrl }, (updatedTab) => {
         if (chrome.runtime.lastError) {
-          console.error(`Error updating tab: ${chrome.runtime.lastError.message}`);
-          // Reset pending states if tab update fails
+          console.error(`Error updating tab to ${geminiUrl}: ${chrome.runtime.lastError.message}`);
           pendingQuery = null;
           targetTabId = null;
         } else {
-          // Note: The chrome.tabs.onUpdated listener will handle injecting the script
-          // once this updated tab finishes loading the Gemini URL.
-          console.log(`Tab ${updatedTab.id} update initiated to ${geminiUrl}.`);
+          if (updatedTab) { // updatedTab might be undefined if error occurred (though lastError should catch it)
+            console.log(`Tab ${updatedTab.id} URL update initiated to ${geminiUrl}. Attempting to re-activate.`);
+            // Attempt to explicitly re-activate the tab
+            chrome.tabs.update(updatedTab.id, { active: true }, () => {
+              if (chrome.runtime.lastError) {
+                console.error(`Error re-activating tab ${updatedTab.id}: ${chrome.runtime.lastError.message}`);
+              } else {
+                console.log(`Gemini Omnibox (Background) - Attempted to re-activate tab ${updatedTab.id} after URL update.`);
+              }
+            });
+          } else {
+            // This case should ideally be caught by chrome.runtime.lastError, but as a fallback:
+             console.warn(`Tab update to ${geminiUrl} called back without an updatedTab object.`);
+          }
         }
       });
     } else {
       console.error("No active tab found to update.");
-      // If no active tab, perhaps fallback to creating a new tab or handle error
-      // For now, just log and clear pending state
       pendingQuery = null;
       targetTabId = null;
     }
   });
 });
 
+// The chrome.tabs.onUpdated listener remains the same as in "Current Tab Nav Version"
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (tabId === targetTabId && changeInfo.status === 'complete' && tab.url && tab.url.startsWith('https://gemini.google.com/')) {
     console.log(`Tab ${tabId} updated and complete. URL: ${tab.url}`);
@@ -65,13 +74,11 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         targetTabId = null;
       });
     } else {
-      // This condition might be met if the user manually navigates the target tab to Gemini
-      // or if the tab reloads after the query has been processed.
       console.log(`Tab ${tabId} (our target) completed loading Gemini, but no pending query, or query already processed.`);
     }
-  } else if (tabId === targetTabId && tab.url && !tab.url.startsWith('https://gemini.google.com/')) {
-    // If our target tab navigates away from Gemini before we could inject.
-    console.log(`Target tab ${tabId} navigated away from Gemini. Clearing pending query.`);
+  } else if (tabId === targetTabId && changeInfo.status === 'complete' && tab.url && !tab.url.startsWith('https://gemini.google.com/')) {
+    // Added 'changeInfo.status === 'complete'' here to avoid premature clearing if just the URL changes during loading
+    console.log(`Target tab ${tabId} navigated away from Gemini (URL: ${tab.url}). Clearing pending query.`);
     pendingQuery = null;
     targetTabId = null;
   }
