@@ -63,7 +63,7 @@ const interactWithForm = (promptInputBox, query) => {
             // Wait 250ms before clicking to ensure the UI is fully ready
             setTimeout(() => {
                 sendButton.click();
-                console.log("Message sent successfully after 200ms delay.");
+                console.log("Message sent successfully after 250ms delay.");
             }, 250);
         }
     });
