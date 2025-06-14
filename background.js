@@ -4,45 +4,77 @@ console.log("Background script loaded. (Current Tab Nav Version + Re-activate At
 let pendingQuery = null;
 let targetTabId = null;
 
-chrome.omnibox.onInputEntered.addListener((text) => {
-  console.log(`Omnibox input entered: ${text}`);
-  pendingQuery = text;
+chrome.omnibox.onInputEntered.addListener((text, disposition) => {
+  console.log(`Omnibox input entered: ${text}, disposition: ${disposition}`);
+  pendingQuery = text; // Storing query for content script
   const geminiUrl = `https://gemini.google.com/`;
 
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (tabs.length > 0) {
-      const currentTab = tabs[0];
-      targetTabId = currentTab.id;
-      console.log(`Updating current tab ${targetTabId} to Gemini. Pending query: ${pendingQuery}`);
-
-      chrome.tabs.update(targetTabId, { url: geminiUrl }, (updatedTab) => {
-        if (chrome.runtime.lastError) {
-          console.error(`Error updating tab to ${geminiUrl}: ${chrome.runtime.lastError.message}`);
-          pendingQuery = null;
-          targetTabId = null;
+  switch (disposition) {
+    case "currentTab":
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs.length > 0) {
+          const currentTab = tabs[0];
+          targetTabId = currentTab.id;
+          console.log(`Updating current tab ${targetTabId} to Gemini. Pending query: ${pendingQuery}`);
+          chrome.tabs.update(targetTabId, { url: geminiUrl }, (updatedTab) => {
+            if (chrome.runtime.lastError) {
+              console.error(`Error updating tab ${targetTabId} to ${geminiUrl}: ${chrome.runtime.lastError.message}`);
+              pendingQuery = null;
+              targetTabId = null;
+            } else if (updatedTab) {
+              console.log(`Tab ${updatedTab.id} URL update initiated to ${geminiUrl}.`);
+            } else {
+              console.warn(`Tab update to ${geminiUrl} (currentTab) called back without an updatedTab object.`);
+            }
+          });
         } else {
-          if (updatedTab) { // updatedTab might be undefined if error occurred (though lastError should catch it)
-            console.log(`Tab ${updatedTab.id} URL update initiated to ${geminiUrl}. Attempting to re-activate.`);
-            // Attempt to explicitly re-activate the tab
-            chrome.tabs.update(updatedTab.id, { active: true }, () => {
-              if (chrome.runtime.lastError) {
-                console.error(`Error re-activating tab ${updatedTab.id}: ${chrome.runtime.lastError.message}`);
-              } else {
-                console.log(`Gemini Omnibox (Background) - Attempted to re-activate tab ${updatedTab.id} after URL update.`);
-              }
-            });
-          } else {
-            // This case should ideally be caught by chrome.runtime.lastError, but as a fallback:
-             console.warn(`Tab update to ${geminiUrl} called back without an updatedTab object.`);
-          }
+          console.error("No active tab found to update for currentTab disposition.");
+          pendingQuery = null; // Clear pending query if no tab to update
         }
       });
-    } else {
-      console.error("No active tab found to update.");
-      pendingQuery = null;
-      targetTabId = null;
-    }
-  });
+      break;
+    case "newForegroundTab":
+      console.log(`Opening Gemini in new foreground tab. Pending query: ${pendingQuery}`);
+      chrome.tabs.create({ url: geminiUrl, active: true }, (newTab) => {
+        if (chrome.runtime.lastError) {
+          console.error(`Error creating new foreground tab for ${geminiUrl}: ${chrome.runtime.lastError.message}`);
+          pendingQuery = null;
+        } else if (newTab) {
+          targetTabId = newTab.id;
+          console.log(`Created new foreground tab ${newTab.id} for Gemini. Target ID set.`);
+        } else {
+           console.warn(`Tab creation (newForegroundTab) for ${geminiUrl} called back without a newTab object.`);
+        }
+      });
+      break;
+    case "newBackgroundTab":
+      console.log(`Opening Gemini in new background tab. Pending query: ${pendingQuery}`);
+      chrome.tabs.create({ url: geminiUrl, active: false }, (newTab) => {
+        if (chrome.runtime.lastError) {
+          console.error(`Error creating new background tab for ${geminiUrl}: ${chrome.runtime.lastError.message}`);
+          pendingQuery = null;
+        } else if (newTab) {
+          targetTabId = newTab.id;
+          console.log(`Created new background tab ${newTab.id} for Gemini. Target ID set.`);
+        } else {
+          console.warn(`Tab creation (newBackgroundTab) for ${geminiUrl} called back without a newTab object.`);
+        }
+      });
+      break;
+    default:
+      console.log(`Unhandled disposition: ${disposition}. Defaulting to current tab behavior.`);
+      // Fallback to current tab logic or handle error
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs.length > 0) {
+          targetTabId = tabs[0].id;
+          chrome.tabs.update(targetTabId, { url: geminiUrl });
+        } else {
+          console.error("No active tab found for default disposition.");
+          pendingQuery = null;
+        }
+      });
+      break;
+  }
 });
 
 // The chrome.tabs.onUpdated listener remains the same as in "Current Tab Nav Version"
