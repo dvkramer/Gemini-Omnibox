@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Gemini Omnibox Submitter (Correct Architecture)",
+  "name": "Gemini Omnibox",
   "version": "2.0",
-  "description": "Sets Gemini as the default search engine and submits queries via a content script.",
+  "description": "Use Gemini straight from your omnibox.",
   "icons": {
     "128": "icon128.png"
   },
@@ -12,9 +12,6 @@
   "host_permissions": [
     "https://gemini.google.com/*"
   ],
-  "background": {
-    "service_worker": "background.js"
-  },
   "content_scripts": [
     {
       "matches": ["https://gemini.google.com/*"],
