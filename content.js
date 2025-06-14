@@ -1,4 +1,4 @@
-// content.js - Hash-based version (simpler approach)
+// content.js - Hash-based version (with 200ms send delay)
 console.log("Gemini Omnibox - content.js (Hash-based) loaded.");
 
 const processQueryFromHash = () => {
@@ -11,7 +11,7 @@ const processQueryFromHash = () => {
     }
 
     console.log(`Query found in hash: "${query}"`);
-    
+
     // Clear the hash immediately
     window.history.replaceState({}, document.title, window.location.pathname);
 
@@ -38,12 +38,12 @@ const processQueryFromHash = () => {
 
 const interactWithForm = (promptInputBox, query) => {
     // Populate and submit
-    promptInputBox.innerHTML = `<p>${query.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>`;
+    promptInputBox.innerHTML = `<p>${query.replace(/</g, "<").replace(/>/g, ">")}</p>`;
     promptInputBox.dispatchEvent(new Event('focus', { bubbles: true }));
-    promptInputBox.dispatchEvent(new InputEvent('input', { 
-        bubbles: true, 
-        data: query, 
-        inputType: 'insertText' 
+    promptInputBox.dispatchEvent(new InputEvent('input', {
+        bubbles: true,
+        data: query,
+        inputType: 'insertText'
     }));
 
     // Find and click send button when enabled
@@ -56,9 +56,15 @@ const interactWithForm = (promptInputBox, query) => {
     const buttonObserver = new MutationObserver(() => {
         const isDisabled = sendButton.disabled || sendButton.getAttribute('aria-disabled') === 'true';
         if (!isDisabled) {
+            // Stop observing immediately to prevent multiple triggers
             buttonObserver.disconnect();
-            sendButton.click();
-            console.log("Message sent successfully.");
+
+            // *** ADDED DELAY HERE ***
+            // Wait 250ms before clicking to ensure the UI is fully ready
+            setTimeout(() => {
+                sendButton.click();
+                console.log("Message sent successfully after 200ms delay.");
+            }, 250);
         }
     });
 
