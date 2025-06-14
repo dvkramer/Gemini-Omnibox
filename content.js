@@ -1,87 +1,83 @@
 // content.js
+console.log("Gemini Omnibox - content.js loaded.");
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  console.log("Gemini Omnibox - Message received:", request);
   if (request.query) {
     const query = request.query;
-    console.log("Query received in content script:", query);
+    console.log(`Gemini Omnibox - Query to process: "${query}"`);
 
-    // Function to find elements and interact with them
-    const interactWithPage = () => {
-      // More specific selector for the input area's editable div
+    const MAX_RETRIES = 20; // Approx 10 seconds (20 * 500ms)
+    let attempts = 0;
+
+    const findAndInteract = () => {
+      attempts++;
+      console.log(`Gemini Omnibox - Attempt ${attempts} to find elements.`);
+
+      // Using the specific div that is contenteditable
       const promptInputBox = document.querySelector('div.ql-editor[data-placeholder="Ask Gemini"]');
-      // Selector for the send button
+      // The send button
       const sendButton = document.querySelector('button[aria-label="Send message"]');
 
       if (promptInputBox && sendButton) {
-        // Check if the button is disabled
-        if (sendButton.disabled) {
-          // If the button is disabled, it usually means the input box is empty or there's an ongoing action.
-          // We will directly set the text and then try to enable the button or wait for it to be enabled.
-          promptInputBox.innerHTML = `<p>${query}</p>`; // Set the text using innerHTML as it's a rich text editor
+        console.log("Gemini Omnibox - Prompt input box and send button found.");
 
-          // Dispatch input events to simulate user typing, which might enable the button
-          promptInputBox.dispatchEvent(new Event('focus', { bubbles: true }));
-          promptInputBox.dispatchEvent(new InputEvent('input', { bubbles: true, data: query }));
-          promptInputBox.dispatchEvent(new Event('blur', { bubbles: true }));
+        // Set the text
+        // For rich text editors (like Quill, which Gemini appears to use based on 'ql-editor'),
+        // directly setting innerHTML or textContent might not always trigger underlying event handlers.
+        // Setting the text via paragraph ensures it's treated as a block of text.
+        promptInputBox.innerHTML = `<p>${query.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>`; // Basic sanitization for HTML
 
-          console.log("Query entered into prompt box:", query);
+        // Dispatch events to simulate user input, which might be necessary for the page to recognize the change
+        promptInputBox.dispatchEvent(new Event('focus', { bubbles: true }));
+        promptInputBox.dispatchEvent(new InputEvent('input', { bubbles: true, data: query, inputType: 'insertText' }));
+        promptInputBox.dispatchEvent(new Event('change', { bubbles: true })); // Some frameworks might listen for change
+        promptInputBox.dispatchEvent(new Event('blur', { bubbles: true }));
 
-          // Re-check the button state after a short delay, as Angular might take time to update
-          setTimeout(() => {
-            const updatedSendButton = document.querySelector('button[aria-label="Send message"]'); // Re-query the button
-            if (updatedSendButton && !updatedSendButton.disabled) {
-              updatedSendButton.click();
-              console.log("Submit button clicked.");
-              sendResponse({ status: "success", message: "Query submitted" });
-            } else if (updatedSendButton && updatedSendButton.disabled) {
-              console.error("Submit button is still disabled after attempting to input text.");
-              sendResponse({ status: "error", message: "Submit button remained disabled." });
-            } else {
-               console.error("Submit button not found after delay.");
-               sendResponse({ status: "error", message: "Submit button not found after delay." });
-            }
-          }, 1000); // Increased delay to allow for UI updates
-        } else {
-          // If button is already enabled (e.g., if there's already text or it doesn't disable)
-          promptInputBox.innerHTML = `<p>${query}</p>`;
-          promptInputBox.dispatchEvent(new Event('focus', { bubbles: true }));
-          promptInputBox.dispatchEvent(new InputEvent('input', { bubbles: true, data: query }));
-          promptInputBox.dispatchEvent(new Event('blur', { bubbles: true }));
-          console.log("Query entered into prompt box (button was enabled):", query);
-          sendButton.click();
-          console.log("Submit button clicked (button was enabled).");
-          sendResponse({ status: "success", message: "Query submitted" });
-        }
+        console.log(`Gemini Omnibox - Query "${query}" entered into prompt box.`);
+
+        // Now, wait for the send button to become enabled
+        let buttonEnableAttempts = 0;
+        const maxButtonEnableRetries = 10; // Approx 5 seconds (10 * 500ms)
+
+        const clickSendButtonWhenEnabled = () => {
+          buttonEnableAttempts++;
+          const currentSendButtonState = document.querySelector('button[aria-label="Send message"]'); // Re-query, state might change
+          if (currentSendButtonState && !currentSendButtonState.disabled) {
+            console.log("Gemini Omnibox - Send button is enabled. Clicking.");
+            currentSendButtonState.click();
+            sendResponse({ status: "success", message: "Query submitted to Gemini." });
+          } else if (buttonEnableAttempts < maxButtonEnableRetries) {
+            console.log(`Gemini Omnibox - Send button still disabled. Attempt ${buttonEnableAttempts}/${maxButtonEnableRetries}. Retrying in 500ms.`);
+            setTimeout(clickSendButtonWhenEnabled, 500);
+          } else {
+            console.error("Gemini Omnibox - Send button remained disabled after multiple attempts.");
+            sendResponse({ status: "error", message: "Send button remained disabled." });
+          }
+        };
+
+        clickSendButtonWhenEnabled();
+
       } else {
-        if (!promptInputBox) {
-          console.error("Prompt input box not found with selector 'div.ql-editor[data-placeholder="Ask Gemini"]'.");
+        if (attempts < MAX_RETRIES) {
+          console.log(`Gemini Omnibox - Elements not found yet. Retrying in 500ms (Attempt ${attempts}/${MAX_RETRIES})`);
+          if (!promptInputBox) console.log("Gemini Omnibox - Prompt input (div.ql-editor[data-placeholder='Ask Gemini']) not found.");
+          if (!sendButton) console.log("Gemini Omnibox - Send button (button[aria-label='Send message']) not found.");
+          setTimeout(findAndInteract, 500);
+        } else {
+          console.error("Gemini Omnibox - Failed to find prompt input box or send button after multiple retries.");
+          if (!promptInputBox) console.error("Gemini Omnibox - Final attempt failed: Prompt input box (div.ql-editor[data-placeholder='Ask Gemini']) was not found.");
+          if (!sendButton) console.error("Gemini Omnibox - Final attempt failed: Send button (button[aria-label='Send message']) was not found.");
+          sendResponse({ status: "error", message: "Required page elements not found after multiple retries." });
         }
-        if (!sendButton) {
-          console.error("Send button not found with selector 'button[aria-label="Send message"]'.");
-        }
-        sendResponse({ status: "error", message: "Required elements not found on the page." });
       }
     };
 
-    // Wait for the page to be fully loaded, or at least for the relevant elements
-    // Using a MutationObserver to wait for the specific elements to appear if they are not immediately available.
-    const observer = new MutationObserver((mutationsList, observerInstance) => {
-      const promptInputBox = document.querySelector('div.ql-editor[data-placeholder="Ask Gemini"]');
-      const sendButton = document.querySelector('button[aria-label="Send message"]');
-      if (promptInputBox && sendButton) {
-        observerInstance.disconnect(); // Stop observing once elements are found
-        interactWithPage();
-      }
-    });
+    findAndInteract(); // Start the process
 
-    // Start observing the document body for added nodes
-    observer.observe(document.body, { childList: true, subtree: true });
-
-    // Also try to interact immediately in case the elements are already there
-    interactWithPage();
-
-    return true; // Indicates that the response will be sent asynchronously
+    return true; // Indicates that the response will be sent asynchronously.
+  } else {
+    console.log("Gemini Omnibox - Message received, but no query found.", request);
+    sendResponse({ status: "error", message: "No query provided in the message." });
   }
 });
-
-console.log("Gemini content script loaded and listening for messages.");
