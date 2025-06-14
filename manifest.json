@@ -1,32 +1,32 @@
 {
-  "manifest_version": 3,
-  "name": "Gemini Omnibox",
-  "version": "2.0",
-  "description": "Use Gemini straight from your omnibox.",
-  "icons": {
-    "128": "icon128.png"
-  },
-  "permissions": [
-    "scripting"
-  ],
-  "host_permissions": [
-    "https://gemini.google.com/*"
-  ],
-  "content_scripts": [
-    {
-      "matches": ["https://gemini.google.com/*"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
+    "manifest_version": 3,
+    "name": "Gemini Omnibox",
+    "version": "2.1",
+    "description": "Use Gemini straight from your omnibox.",
+    "icons": {
+        "128": "icon128.png"
+    },
+    "permissions": [
+        "scripting"
+    ],
+    "host_permissions": [
+        "https://gemini.google.com/*"
+    ],
+    "content_scripts": [
+        {
+            "matches": ["https://gemini.google.com/*"],
+            "js": ["content.js"],
+            "run_at": "document_idle"
+        }
+    ],
+    "chrome_settings_overrides": {
+        "search_provider": {
+            "name": "Gemini",
+            "keyword": "gem",
+            "search_url": "https://gemini.google.com/#{searchTerms}",
+            "favicon_url": "https://www.google.com/s2/favicons?domain=gemini.google.com",
+            "encoding": "UTF-8",
+            "is_default": false
+        }
     }
-  ],
-  "chrome_settings_overrides": {
-    "search_provider": {
-      "name": "Gemini",
-      "keyword": "gem",
-      "search_url": "https://gemini.google.com/?q={searchTerms}",
-      "favicon_url": "https://www.google.com/s2/favicons?domain=gemini.google.com",
-      "encoding": "UTF-8",
-      "is_default": false
-    }
-  }
 }
